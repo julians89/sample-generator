@@ -16,8 +16,6 @@ class SampleDataset(torch.utils.data.Dataset):
     super().__init__()
     self.filenames = []
 
-    print(f"Random crop: {global_args.random_crop}")
-    
     self.augs = torch.nn.Sequential(
       PadCrop(global_args.sample_size, randomize=global_args.random_crop),
       RandomPhaseInvert(),
@@ -32,6 +30,8 @@ class SampleDataset(torch.utils.data.Dataset):
       for ext in ['wav','flac','ogg','aiff','aif','mp3']:
         self.filenames += glob(f'{path}/**/*.{ext}', recursive=True)
 
+    print ('filenames: ', self.filenames)
+
     self.sr = global_args.sample_rate
     if hasattr(global_args,'load_frac'):
       self.load_frac = global_args.load_frac
@@ -45,8 +45,8 @@ class SampleDataset(torch.utils.data.Dataset):
 
     self.sox_effects = [
       ['gain', '-n'],  # normalises to 0dB
-      ['pitch', '5'],  # 5 cent pitch shift
-      ['rate', str(self.sr)],  # resample to 8000 Hz
+      #['pitch', '5'],  # 5 cent pitch shift
+      #['rate', str(self.sr)],  # resample to 8000 Hz
     ]
 
   def load_file(self, filename):
@@ -86,6 +86,7 @@ class SampleDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx):
     audio_filename = self.filenames[idx]
+    """
     try:
       if self.cache_training_data:
         audio = self.audio_files[idx] # .copy()
@@ -96,15 +97,40 @@ class SampleDataset(torch.utils.data.Dataset):
       if self.augs is not None:
         audio = self.augs(audio)
 
-      print ('audio_shape: ', audio.shape)
-
       audio = audio.clamp(-1, 1)
+      print ('running sox ')
+
+      audio, _ = apply_effects_tensor(audio, self.sr, self.sox_effects)
+      print ('changed ')
 
       #Encode the file to assist in prediction
       if self.encoding is not None:
         audio = self.encoding(audio)
 
+
       return (audio, audio_filename)
     except Exception as e:
-     # print(f'Couldn\'t load file {audio_filename}: {e}')
+      print(f'Couldn\'t load file {audio_filename}: {e}')
       return self[random.randrange(len(self))]
+    """
+    if self.cache_training_data:
+        audio = self.audio_files[idx] # .copy()
+    else:
+      audio = self.load_file(audio_filename)
+
+    #Run augmentations on this sample (including random crop)
+    if self.augs is not None:
+      audio = self.augs(audio)
+
+    audio = audio.clamp(-1, 1)
+    print ('running sox ')
+
+    audio, _ = apply_effects_tensor(audio, self.sr, self.sox_effects)
+    print ('changed ')
+
+    #Encode the file to assist in prediction
+    if self.encoding is not None:
+      audio = self.encoding(audio)
+
+
+    return (audio, audio_filename)
