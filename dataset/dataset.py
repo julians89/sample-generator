@@ -9,6 +9,8 @@ import tqdm
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
+from torchaudio.sox_effects import apply_effects_tensor
+
 class SampleDataset(torch.utils.data.Dataset):
   def __init__(self, paths, global_args):
     super().__init__()
@@ -25,6 +27,7 @@ class SampleDataset(torch.utils.data.Dataset):
       Stereo()
     )
 
+
     for path in paths:
       for ext in ['wav','flac','ogg','aiff','aif','mp3']:
         self.filenames += glob(f'{path}/**/*.{ext}', recursive=True)
@@ -40,6 +43,11 @@ class SampleDataset(torch.utils.data.Dataset):
 
     if self.cache_training_data: self.preload_files()
 
+    self.sox_effects = [
+      ['gain', '-n'],  # normalises to 0dB
+      ['pitch', '5'],  # 5 cent pitch shift
+      ['rate', str(self.sr)],  # resample to 8000 Hz
+    ]
 
   def load_file(self, filename):
     audio, sr = torchaudio.load(filename)
@@ -87,6 +95,8 @@ class SampleDataset(torch.utils.data.Dataset):
       #Run augmentations on this sample (including random crop)
       if self.augs is not None:
         audio = self.augs(audio)
+
+      print ('audio_shape: ', audio.shape)
 
       audio = audio.clamp(-1, 1)
 
